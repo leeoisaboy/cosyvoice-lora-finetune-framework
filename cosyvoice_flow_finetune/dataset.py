@@ -11,6 +11,15 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import pandas as pd
 
+# 导入跨样本训练配置
+try:
+    from config import ANTI_LEAKAGE_CONFIG
+except ImportError:
+    ANTI_LEAKAGE_CONFIG = {
+        'cross_sample_enabled': True,
+        'cross_sample_prob': 0.8,
+    }
+
 
 # ============================================================
 # 数据增强模块
@@ -157,7 +166,7 @@ class MelAugmentation:
 
 
 class FlowFinetuneDataset(Dataset):
-    """Dataset for Flow model fine-tuning"""
+    """Dataset for Flow model fine-tuning with cross-sample prompting support"""
 
     def __init__(
         self,
@@ -181,6 +190,12 @@ class FlowFinetuneDataset(Dataset):
         print(f"Dataset loaded: {len(self.samples)} samples")
         if augmentation:
             print(f"Data augmentation: ENABLED")
+
+        # 跨样本训练配置
+        self.cross_sample_enabled = ANTI_LEAKAGE_CONFIG.get('cross_sample_enabled', True)
+        self.cross_sample_prob = ANTI_LEAKAGE_CONFIG.get('cross_sample_prob', 0.8)
+        if self.cross_sample_enabled:
+            print(f"Cross-sample prompting: ENABLED (prob={self.cross_sample_prob})")
 
     def _load_data(self):
         """Load data from parquet files"""
@@ -230,6 +245,79 @@ class FlowFinetuneDataset(Dataset):
 
     def __len__(self):
         return len(self.samples)
+
+    def _get_random_prompt_mel(self, exclude_idx: int) -> Optional[torch.Tensor]:
+        """
+        获取随机样本的 mel 特征作为跨样本 prompt
+
+        Args:
+            exclude_idx: 需要排除的样本索引（当前样本）
+
+        Returns:
+            随机样本的 mel 特征 (T, 80) 或 None
+        """
+        if len(self.samples) < 2:
+            return None
+
+        # 随机选择一个不同的样本
+        random_idx = exclude_idx
+        attempts = 0
+        while attempts < 10 and random_idx == exclude_idx:
+            random_idx = random.randint(0, len(self.samples) - 1)
+            attempts += 1
+
+        if random_idx == exclude_idx:
+            return None
+
+        try:
+            random_sample = self.samples[random_idx]
+
+            if 'speech_feat' not in random_sample:
+                return None
+
+            speech_feat = random_sample['speech_feat']
+            speech_feat_shape = random_sample.get('speech_feat_shape', None)
+
+            # Convert to tensor
+            if isinstance(speech_feat, torch.Tensor):
+                speech_feat = speech_feat.float()
+            elif isinstance(speech_feat, np.ndarray):
+                speech_feat = torch.from_numpy(speech_feat.copy()).float()
+            elif isinstance(speech_feat, list):
+                speech_feat = torch.tensor(speech_feat, dtype=torch.float32)
+            else:
+                speech_feat = torch.tensor(np.array(speech_feat), dtype=torch.float32)
+
+            # Handle 1D case
+            if speech_feat.dim() == 1:
+                if speech_feat_shape is not None:
+                    if isinstance(speech_feat_shape, (list, tuple)) and len(speech_feat_shape) == 2:
+                        T, n_mels = speech_feat_shape
+                        speech_feat = speech_feat.view(int(T), int(n_mels))
+                    else:
+                        total = speech_feat.numel()
+                        if total % self.n_mels == 0:
+                            speech_feat = speech_feat.view(-1, self.n_mels)
+                        else:
+                            return None
+                else:
+                    total = speech_feat.numel()
+                    if total % self.n_mels == 0:
+                        speech_feat = speech_feat.view(-1, self.n_mels)
+                    else:
+                        return None
+
+            # Ensure shape is (T, n_mels)
+            if speech_feat.dim() == 2:
+                if speech_feat.shape[-1] != self.n_mels and speech_feat.shape[0] == self.n_mels:
+                    speech_feat = speech_feat.transpose(0, 1)
+            else:
+                return None
+
+            return speech_feat
+
+        except Exception:
+            return None
 
     def __getitem__(self, idx):
         sample = self.samples[idx]
@@ -329,10 +417,16 @@ class FlowFinetuneDataset(Dataset):
             if self.augmentation_enabled:
                 speech_feat, speech_token = self.augmentation(speech_feat, speech_token)
 
+            # ========== 跨样本训练：获取随机样本的 mel 作为 prompt ==========
+            cross_sample_mel = None
+            if self.cross_sample_enabled and random.random() < self.cross_sample_prob:
+                cross_sample_mel = self._get_random_prompt_mel(idx)
+
             return {
                 'speech_token': speech_token,
                 'speech_feat': speech_feat,
                 'embedding': embedding,
+                'cross_sample_mel': cross_sample_mel,  # 跨样本 prompt mel，可能为 None
             }
 
         except Exception as e:
@@ -352,7 +446,7 @@ class FlowFinetuneDataset(Dataset):
 
 
 def collate_fn(batch):
-    """Collate function for DataLoader"""
+    """Collate function for DataLoader with cross-sample prompting support"""
     batch = [b for b in batch if b is not None]
     if len(batch) == 0:
         return None
@@ -371,8 +465,23 @@ def collate_fn(batch):
     speech_feats = []
     speech_feat_lens = []
     embeddings = []
+    cross_sample_mels = []  # 跨样本 prompt mel
+    cross_sample_mel_lens = []  # 跨样本 prompt mel 的长度
 
+    # 首先收集所有 cross_sample_mel 以确定最大长度
     for b in batch:
+        cross_mel = b.get('cross_sample_mel', None)
+        if cross_mel is not None:
+            cross_sample_mels.append(cross_mel)
+            cross_sample_mel_lens.append(cross_mel.shape[0])
+        else:
+            cross_sample_mels.append(None)
+            cross_sample_mel_lens.append(0)
+
+    # 计算跨样本 mel 的最大长度
+    max_cross_mel_len = max(cross_sample_mel_lens) if any(l > 0 for l in cross_sample_mel_lens) else 0
+
+    for i, b in enumerate(batch):
         token = b['speech_token']
         token_len = token.shape[0]
         padded_token = F.pad(token, (0, max_token_len - token_len), value=0)
@@ -388,13 +497,32 @@ def collate_fn(batch):
 
         embeddings.append(b['embedding'])
 
-    return {
+    # 处理跨样本 mel
+    padded_cross_mels = []
+    for i, cross_mel in enumerate(cross_sample_mels):
+        if cross_mel is not None and max_cross_mel_len > 0:
+            cross_len = cross_mel.shape[0]
+            padded_cross_mel = F.pad(cross_mel, (0, 0, 0, max_cross_mel_len - cross_len), value=MEL_PADDING_VALUE)
+            padded_cross_mels.append(padded_cross_mel)
+        elif max_cross_mel_len > 0:
+            # 如果这个样本没有 cross_sample_mel，创建一个全静音的占位符
+            padded_cross_mels.append(torch.full((max_cross_mel_len, 80), MEL_PADDING_VALUE))
+        # 如果所有样本都没有 cross_sample_mel，则不创建
+
+    result = {
         'speech_token': torch.stack(speech_tokens),
         'speech_token_len': torch.tensor(speech_token_lens),
         'speech_feat': torch.stack(speech_feats),
         'speech_feat_len': torch.tensor(speech_feat_lens),
         'embedding': torch.stack(embeddings),
     }
+
+    # 添加跨样本 mel 信息（如果存在）
+    if padded_cross_mels:
+        result['cross_sample_mel'] = torch.stack(padded_cross_mels)
+        result['cross_sample_mel_len'] = torch.tensor(cross_sample_mel_lens)
+
+    return result
 
 
 def create_dataloader(

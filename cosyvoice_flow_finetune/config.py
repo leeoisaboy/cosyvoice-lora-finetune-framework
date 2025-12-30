@@ -105,6 +105,48 @@ TRAIN_CONFIG = {
 
 
 # ============================================================
+# 语义泄漏防护配置 (Semantic Leakage Prevention)
+# ============================================================
+# 这些配置用于解决 LoRA 微调时 prompt 内容泄漏到合成音频开头的问题
+
+ANTI_LEAKAGE_CONFIG = {
+    # ========== 策略1: 静音隔离带 (Silence Padding) ==========
+    # 在 prompt 和 target 之间插入静音 token，形成语义隔离
+    'silence_padding_enabled': True,
+    'silence_token_id': 0,         # 静音 token 的 ID（通常为 0）
+    'silence_min_tokens': 5,       # 最少插入的静音 token 数
+    'silence_max_tokens': 10,      # 最多插入的静音 token 数
+
+    # ========== 策略2: 动态 Prompt 长度 (Dynamic Prompt Length) ==========
+    # 随机选择不同长度的 prompt，避免模型记忆固定边界
+    'dynamic_prompt_enabled': True,
+    'prompt_min_ratio': 0.05,      # prompt 最小比例 (5%)
+    'prompt_max_ratio': 0.35,      # prompt 最大比例 (35%)
+
+    # ========== 策略3: Prompt Dropout ==========
+    # 一定概率完全丢弃 prompt，强制模型学习独立生成
+    'prompt_dropout_enabled': True,
+    'prompt_dropout_prob': 0.15,   # 15% 概率完全无 prompt
+
+    # ========== 策略4: 边界 Loss 权重 (Boundary Loss Weight) ==========
+    # 在 prompt-target 边界处的 mel 帧施加更高的 loss 权重
+    'boundary_loss_enabled': True,
+    'boundary_frames': 10,         # 边界区域的帧数
+    'boundary_loss_weight': 2.0,   # 边界区域的 loss 权重倍数
+
+    # ========== 策略5: 跨样本训练 (Cross-Sample Prompting) ==========
+    # 【核心策略】使用不同音频的 mel 作为 prompt，彻底切断语义连贯性
+    # 这是解决语义泄漏的最有效方法！
+    'cross_sample_enabled': True,
+    'cross_sample_prob': 0.8,      # 80% 概率使用跨样本 prompt（剩余20%使用同源）
+
+    # ========== 静音 Mel 特征 ==========
+    # 用于在 mel 空间中表示静音
+    'silence_mel_value': -11.5,    # log mel 空间的静音值（归一化前）
+}
+
+
+# ============================================================
 # LoRA 配置
 # ============================================================
 

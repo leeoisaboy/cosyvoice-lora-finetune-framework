@@ -3,7 +3,7 @@
 # No external CosyVoice/Matcha-TTS dependencies
 
 import random
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -11,6 +11,27 @@ import torch.nn.functional as F
 
 from utils import make_pad_mask
 from modules import ConformerEncoder, InterpolateRegulator, ConditionalDecoder
+
+# 导入语义泄漏防护配置
+try:
+    from config import ANTI_LEAKAGE_CONFIG
+except ImportError:
+    # 默认配置
+    ANTI_LEAKAGE_CONFIG = {
+        'silence_padding_enabled': True,
+        'silence_token_id': 0,
+        'silence_min_tokens': 5,
+        'silence_max_tokens': 10,
+        'dynamic_prompt_enabled': True,
+        'prompt_min_ratio': 0.05,
+        'prompt_max_ratio': 0.35,
+        'prompt_dropout_enabled': True,
+        'prompt_dropout_prob': 0.15,
+        'boundary_loss_enabled': True,
+        'boundary_frames': 10,
+        'boundary_loss_weight': 2.0,
+        'silence_mel_value': -11.5,
+    }
 
 
 class ConditionalCFM(nn.Module):
@@ -89,20 +110,30 @@ class ConditionalCFM(nn.Module):
 
         return sol[-1].float()
 
-    def compute_loss(self, x1, mask, mu, spks=None, cond=None):
-        """Compute flow matching loss"""
-        b, _, t = mu.shape
+    def compute_loss(self, x1, mask, mu, spks=None, cond=None, prompt_lens=None):
+        """
+        Compute flow matching loss with optional boundary weighting.
+
+        Args:
+            x1: target mel spectrogram (B, 80, T)
+            mask: padding mask (B, 1, T)
+            mu: encoder output (B, 80, T)
+            spks: speaker embedding (B, 80)
+            cond: conditioning (B, 80, T)
+            prompt_lens: list of prompt lengths for each sample, used for boundary loss
+        """
+        b, _, _ = mu.shape
 
         # Random timestep
-        t = torch.rand([b, 1, 1], device=mu.device, dtype=mu.dtype)
+        t_step = torch.rand([b, 1, 1], device=mu.device, dtype=mu.dtype)
         if self.t_scheduler == 'cosine':
-            t = 1 - torch.cos(t * 0.5 * 3.14159265359)
+            t_step = 1 - torch.cos(t_step * 0.5 * 3.14159265359)
 
         # Sample noise
         z = torch.randn_like(x1)
 
         # Interpolate
-        y = (1 - (1 - self.sigma_min) * t) * z + t * x1
+        y = (1 - (1 - self.sigma_min) * t_step) * z + t_step * x1
         u = x1 - (1 - self.sigma_min) * z
 
         # CFG dropout
@@ -112,8 +143,34 @@ class ConditionalCFM(nn.Module):
             spks = spks * cfg_mask.view(-1, 1)
             cond = cond * cfg_mask.view(-1, 1, 1)
 
-        pred = self.estimator(y, mask, mu, t.view(b), spks, cond)
-        loss = F.mse_loss(pred * mask, u * mask, reduction="sum") / (torch.sum(mask) * u.shape[1])
+        pred = self.estimator(y, mask, mu, t_step.view(b), spks, cond)
+
+        # ========== 策略4: 边界 Loss 权重 ==========
+        # 在 prompt-target 边界区域施加更高的 loss 权重
+        if (ANTI_LEAKAGE_CONFIG.get('boundary_loss_enabled', False)
+            and prompt_lens is not None):
+
+            boundary_frames = ANTI_LEAKAGE_CONFIG.get('boundary_frames', 10)
+            boundary_weight = ANTI_LEAKAGE_CONFIG.get('boundary_loss_weight', 2.0)
+
+            # 创建权重 mask，默认为 1
+            weight_mask = torch.ones_like(mask)
+
+            for i, prompt_len in enumerate(prompt_lens):
+                if prompt_len > 0:
+                    # 边界区域：prompt 结束后的 boundary_frames 帧
+                    start_idx = prompt_len
+                    end_idx = min(prompt_len + boundary_frames, weight_mask.shape[2])
+                    weight_mask[i, :, start_idx:end_idx] = boundary_weight
+
+            # 带权重的 MSE loss
+            diff = (pred - u) * mask
+            weighted_diff = diff * weight_mask
+            loss = (weighted_diff ** 2).sum() / (torch.sum(mask * weight_mask) * u.shape[1])
+        else:
+            # 标准 MSE loss
+            loss = F.mse_loss(pred * mask, u * mask, reduction="sum") / (torch.sum(mask) * u.shape[1])
+
         return loss, y
 
 
@@ -160,17 +217,34 @@ class MaskedDiffWithXvec(nn.Module):
         return mel * self.mel_std + self.mel_mean
 
     def forward(self, batch: dict, device: torch.device) -> Dict[str, Optional[torch.Tensor]]:
-        """Training forward pass"""
+        """
+        Training forward pass with anti-leakage strategies.
+
+        实现五个语义泄漏防护策略：
+        1. 静音隔离带 (Silence Padding): 在 prompt 和 target 之间插入静音
+        2. 动态 Prompt 长度: 随机选择不同比例的 prompt
+        3. Prompt Dropout: 一定概率完全丢弃 prompt
+        4. 边界 Loss 权重: 在边界区域施加更高的 loss 权重
+        5. 跨样本训练 (Cross-Sample Prompting): 使用不同音频的 mel 作为 prompt【核心策略】
+        """
         token = batch['speech_token'].to(device)
         token_len = batch['speech_token_len'].to(device)
         feat = batch['speech_feat'].to(device)
         feat_len = batch['speech_feat_len'].to(device)
         embedding = batch['embedding'].to(device)
 
+        # ========== 策略5: 跨样本训练 - 获取跨样本 mel ==========
+        # 这是解决语义泄漏的核心策略！
+        cross_sample_mel = None
+        cross_sample_mel_len = None
+        if 'cross_sample_mel' in batch:
+            cross_sample_mel = batch['cross_sample_mel'].to(device)
+            cross_sample_mel_len = batch['cross_sample_mel_len'].to(device)
+
         # ========== 在线归一化 mel ==========
-        # 原始: mean ≈ -6, range ≈ [-11, 1]
-        # 归一化后: mean ≈ 0, std ≈ 1
         feat = self.normalize_mel(feat)
+        if cross_sample_mel is not None:
+            cross_sample_mel = self.normalize_mel(cross_sample_mel)
 
         # Speaker embedding projection
         embedding = F.normalize(embedding, dim=1)
@@ -178,44 +252,109 @@ class MaskedDiffWithXvec(nn.Module):
 
         # Token embedding
         mask = (~make_pad_mask(token_len)).float().unsqueeze(-1).to(device)
-        token = self.input_embedding(torch.clamp(token, min=0)) * mask
+        token_emb = self.input_embedding(torch.clamp(token, min=0)) * mask
 
         # Encode
-        h, h_lengths = self.encoder(token, token_len)
+        h, h_lengths = self.encoder(token_emb, token_len)
         h = self.encoder_proj(h)
         h, h_lengths = self.length_regulator(h, feat_len)
 
-        # Random conditioning (for training)
-        # ========== Prompt 策略配置 ==========
-        # 混合策略：让模型同时学习
-        #   1. 从头生成（无 prompt）
-        #   2. 续写生成（有 prompt，学习利用前文生成后文）
-        #
-        # 这样模型既能学习完整生成，也能学习长序列的连贯性
-        NO_PROMPT_PROB = 0.3      # 30% 样本无 prompt（学习从头生成）
-        PROMPT_MIN_RATIO = 0.1    # prompt 最小比例
-        PROMPT_MAX_RATIO = 0.5    # prompt 最大比例（10%-50% 随机）
+        # ========== 语义泄漏防护策略 ==========
+        # 获取配置
+        silence_enabled = ANTI_LEAKAGE_CONFIG.get('silence_padding_enabled', True)
+        dynamic_enabled = ANTI_LEAKAGE_CONFIG.get('dynamic_prompt_enabled', True)
+        dropout_enabled = ANTI_LEAKAGE_CONFIG.get('prompt_dropout_enabled', True)
 
+        prompt_min_ratio = ANTI_LEAKAGE_CONFIG.get('prompt_min_ratio', 0.05)
+        prompt_max_ratio = ANTI_LEAKAGE_CONFIG.get('prompt_max_ratio', 0.35)
+        dropout_prob = ANTI_LEAKAGE_CONFIG.get('prompt_dropout_prob', 0.15)
+
+        silence_min = ANTI_LEAKAGE_CONFIG.get('silence_min_tokens', 5)
+        silence_max = ANTI_LEAKAGE_CONFIG.get('silence_max_tokens', 10)
+        silence_mel_value = ANTI_LEAKAGE_CONFIG.get('silence_mel_value', -11.5)
+        # 归一化后的静音值
+        silence_mel_normalized = (silence_mel_value - self.mel_mean) / self.mel_std
+
+        # 构建条件和记录 prompt 长度（用于边界 loss）
         conds = torch.zeros(feat.shape, device=device)
+        prompt_lens = []  # 记录每个样本的 prompt 长度
+
         for i, j in enumerate(feat_len):
-            if random.random() < NO_PROMPT_PROB:
-                # 无 prompt，从头生成
+            j = int(j.item())
+
+            # ========== 策略3: Prompt Dropout ==========
+            if dropout_enabled and random.random() < dropout_prob:
+                # 完全无 prompt，从头生成
+                prompt_lens.append(0)
                 continue
-            # 有 prompt，随机选择 10%-50% 作为条件
-            min_idx = max(1, int(PROMPT_MIN_RATIO * j))
-            max_idx = max(min_idx + 1, int(PROMPT_MAX_RATIO * j))
-            index = random.randint(min_idx, max_idx)
-            conds[i, :index] = feat[i, :index]
+
+            # ========== 策略2: 动态 Prompt 长度 ==========
+            if dynamic_enabled:
+                min_idx = max(1, int(prompt_min_ratio * j))
+                max_idx = max(min_idx + 1, int(prompt_max_ratio * j))
+                prompt_len = random.randint(min_idx, max_idx)
+            else:
+                # 固定 30% prompt
+                prompt_len = max(1, int(0.3 * j))
+
+            # ========== 策略5: 跨样本训练 - 选择 prompt 来源 ==========
+            # 如果有跨样本 mel 且该样本有效，使用跨样本 mel 作为 prompt
+            # 这彻底切断了 prompt 和 target 之间的语义连贯性！
+            use_cross_sample = False
+            if (cross_sample_mel is not None
+                and cross_sample_mel_len is not None
+                and cross_sample_mel_len[i].item() > 0):
+                use_cross_sample = True
+                # 使用跨样本 mel 的实际长度来限制 prompt_len
+                cross_mel_len = int(cross_sample_mel_len[i].item())
+                prompt_len = min(prompt_len, cross_mel_len)
+
+            # ========== 策略1: 静音隔离带 ==========
+            if silence_enabled:
+                # 计算静音帧数（token 到 mel 的比例约为 1:1.725）
+                silence_tokens = random.randint(silence_min, silence_max)
+                silence_mel_frames = int(silence_tokens * 22050 / 256 / self.input_frame_rate)
+                silence_mel_frames = max(3, min(silence_mel_frames, 20))  # 限制在 3-20 帧
+
+                # 调整 prompt_len，为静音区留出空间
+                if prompt_len + silence_mel_frames < j:
+                    # 在 prompt 区域填充 mel（跨样本或同源）
+                    if use_cross_sample:
+                        # 【核心】使用不同音频的 mel 作为 prompt
+                        conds[i, :prompt_len] = cross_sample_mel[i, :prompt_len]
+                    else:
+                        # 回退到同源 mel（20% 概率）
+                        conds[i, :prompt_len] = feat[i, :prompt_len]
+                    # 在 prompt 后插入静音（使用归一化后的静音值）
+                    conds[i, prompt_len:prompt_len + silence_mel_frames] = silence_mel_normalized
+                    # 记录实际的 prompt 结束位置（包含静音）
+                    prompt_lens.append(prompt_len + silence_mel_frames)
+                else:
+                    # 空间不足，不插入静音
+                    if use_cross_sample:
+                        conds[i, :prompt_len] = cross_sample_mel[i, :prompt_len]
+                    else:
+                        conds[i, :prompt_len] = feat[i, :prompt_len]
+                    prompt_lens.append(prompt_len)
+            else:
+                # 不使用静音隔离带
+                if use_cross_sample:
+                    conds[i, :prompt_len] = cross_sample_mel[i, :prompt_len]
+                else:
+                    conds[i, :prompt_len] = feat[i, :prompt_len]
+                prompt_lens.append(prompt_len)
+
         conds = conds.transpose(1, 2)
 
-        # Compute loss
+        # Compute loss（传入 prompt_lens 用于边界 loss 权重）
         mask = (~make_pad_mask(feat_len)).to(h)
         loss, _ = self.decoder.compute_loss(
             feat.transpose(1, 2).contiguous(),
             mask.unsqueeze(1),
             h.transpose(1, 2).contiguous(),
             embedding,
-            cond=conds
+            cond=conds,
+            prompt_lens=prompt_lens  # 传递 prompt 长度信息
         )
         return {'loss': loss}
 
