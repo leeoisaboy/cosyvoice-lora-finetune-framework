@@ -17,7 +17,7 @@ try:
 except ImportError:
     ANTI_LEAKAGE_CONFIG = {
         'cross_sample_enabled': True,
-        'cross_sample_prob': 0.8,
+        'cross_sample_prob': 0.5,
     }
 
 
@@ -71,7 +71,7 @@ class MelAugmentation:
         self.noise_prob = noise_prob
         self.noise_std = noise_std
 
-    def __call__(self, mel: torch.Tensor, speech_token: torch.Tensor = None):
+    def __call__(self, mel: torch.Tensor, speech_token: Optional[torch.Tensor] = None):
         """
         Args:
             mel: (T, n_mels) mel spectrogram
@@ -193,7 +193,7 @@ class FlowFinetuneDataset(Dataset):
 
         # 跨样本训练配置
         self.cross_sample_enabled = ANTI_LEAKAGE_CONFIG.get('cross_sample_enabled', True)
-        self.cross_sample_prob = ANTI_LEAKAGE_CONFIG.get('cross_sample_prob', 0.8)
+        self.cross_sample_prob = ANTI_LEAKAGE_CONFIG.get('cross_sample_prob', 0.5)
         if self.cross_sample_enabled:
             print(f"Cross-sample prompting: ENABLED (prob={self.cross_sample_prob})")
 
@@ -203,17 +203,25 @@ class FlowFinetuneDataset(Dataset):
         parquet_files = []
 
         if os.path.exists(data_list_path):
-            with open(data_list_path, 'r') as f:
+            with open(data_list_path, 'r', encoding='utf-8') as f:
                 raw_paths = [line.strip() for line in f if line.strip()]
             print(f"Found {len(raw_paths)} entries in data.list")
 
             for raw_path in raw_paths:
+                # 标准化路径分隔符
                 raw_path = raw_path.replace('\\', '/')
+
+                # 尝试多种路径解析方式
                 candidate_paths = [
+                    # 1. 原始路径（绝对路径）
                     raw_path,
+                    # 2. 直接使用文件名
                     os.path.join(self.data_dir, os.path.basename(raw_path)),
+                    # 3. 相对于 data_dir
                     os.path.join(self.data_dir, raw_path),
                 ]
+
+                # 4. 如果路径包含子目录，提取文件名和部分路径
                 path_parts = raw_path.split('/')
                 if len(path_parts) > 1:
                     candidate_paths.append(os.path.join(self.data_dir, path_parts[-1]))
@@ -221,10 +229,16 @@ class FlowFinetuneDataset(Dataset):
                     if len(path_parts) > 2:
                         candidate_paths.append(os.path.join(self.data_dir, '/'.join(path_parts[2:])))
 
+                # 查找第一个存在的文件
+                found = False
                 for cp in candidate_paths:
                     if os.path.exists(cp):
                         parquet_files.append(cp)
+                        found = True
                         break
+
+                if not found:
+                    print(f"Warning: Could not find parquet file for: {raw_path}")
         else:
             print("data.list not found, searching for parquet files...")
             for root, dirs, files in os.walk(self.data_dir):
@@ -235,23 +249,25 @@ class FlowFinetuneDataset(Dataset):
 
         print(f"Found {len(parquet_files)} valid parquet files")
 
+        # 加载所有 parquet 文件（使用更高效的方式）
         for pf in parquet_files:
             try:
                 df = pd.read_parquet(pf)
-                for idx, row in df.iterrows():
-                    self.samples.append(row.to_dict())
+                self.samples.extend(df.to_dict('records'))
+                del df  # 及时释放内存
             except Exception as e:
                 print(f"Failed to read {pf}: {e}")
 
     def __len__(self):
         return len(self.samples)
 
-    def _get_random_prompt_mel(self, exclude_idx: int) -> Optional[torch.Tensor]:
+    def _get_random_prompt_mel(self, exclude_idx: int, max_len: int = 100) -> Optional[torch.Tensor]:
         """
         获取随机样本的 mel 特征作为跨样本 prompt
 
         Args:
             exclude_idx: 需要排除的样本索引（当前样本）
+            max_len: 最大返回长度，限制内存使用
 
         Returns:
             随机样本的 mel 特征 (T, 80) 或 None
@@ -313,6 +329,10 @@ class FlowFinetuneDataset(Dataset):
                     speech_feat = speech_feat.transpose(0, 1)
             else:
                 return None
+
+            # 限制长度，减少内存使用
+            if speech_feat.shape[0] > max_len:
+                speech_feat = speech_feat[:max_len]
 
             return speech_feat
 
@@ -456,8 +476,6 @@ def collate_fn(batch):
 
     # Mel spectrogram padding value
     # Log mel 的范围大约是 [-11.5, 1.0]，静音区域接近 -11.5
-    # 注意：padding 发生在归一化之前，所以使用原始值 -11.5
-    # 归一化后这个值会变成 (-11.5 - (-6.0)) / 2.0 ≈ -2.75
     MEL_PADDING_VALUE = -11.5
 
     speech_tokens = []
@@ -465,23 +483,8 @@ def collate_fn(batch):
     speech_feats = []
     speech_feat_lens = []
     embeddings = []
-    cross_sample_mels = []  # 跨样本 prompt mel
-    cross_sample_mel_lens = []  # 跨样本 prompt mel 的长度
 
-    # 首先收集所有 cross_sample_mel 以确定最大长度
     for b in batch:
-        cross_mel = b.get('cross_sample_mel', None)
-        if cross_mel is not None:
-            cross_sample_mels.append(cross_mel)
-            cross_sample_mel_lens.append(cross_mel.shape[0])
-        else:
-            cross_sample_mels.append(None)
-            cross_sample_mel_lens.append(0)
-
-    # 计算跨样本 mel 的最大长度
-    max_cross_mel_len = max(cross_sample_mel_lens) if any(l > 0 for l in cross_sample_mel_lens) else 0
-
-    for i, b in enumerate(batch):
         token = b['speech_token']
         token_len = token.shape[0]
         padded_token = F.pad(token, (0, max_token_len - token_len), value=0)
@@ -490,24 +493,11 @@ def collate_fn(batch):
 
         feat = b['speech_feat']
         feat_len = feat.shape[0]
-        # 使用 MEL_PADDING_VALUE 而非 0
         padded_feat = F.pad(feat, (0, 0, 0, max_feat_len - feat_len), value=MEL_PADDING_VALUE)
         speech_feats.append(padded_feat)
         speech_feat_lens.append(feat_len)
 
         embeddings.append(b['embedding'])
-
-    # 处理跨样本 mel
-    padded_cross_mels = []
-    for i, cross_mel in enumerate(cross_sample_mels):
-        if cross_mel is not None and max_cross_mel_len > 0:
-            cross_len = cross_mel.shape[0]
-            padded_cross_mel = F.pad(cross_mel, (0, 0, 0, max_cross_mel_len - cross_len), value=MEL_PADDING_VALUE)
-            padded_cross_mels.append(padded_cross_mel)
-        elif max_cross_mel_len > 0:
-            # 如果这个样本没有 cross_sample_mel，创建一个全静音的占位符
-            padded_cross_mels.append(torch.full((max_cross_mel_len, 80), MEL_PADDING_VALUE))
-        # 如果所有样本都没有 cross_sample_mel，则不创建
 
     result = {
         'speech_token': torch.stack(speech_tokens),
@@ -517,8 +507,22 @@ def collate_fn(batch):
         'embedding': torch.stack(embeddings),
     }
 
-    # 添加跨样本 mel 信息（如果存在）
-    if padded_cross_mels:
+    # 只有当有跨样本 mel 时才处理（减少内存开销）
+    cross_sample_mels = [b.get('cross_sample_mel', None) for b in batch]
+    valid_cross_mels = [m for m in cross_sample_mels if m is not None]
+
+    if valid_cross_mels:
+        cross_sample_mel_lens = [m.shape[0] if m is not None else 0 for m in cross_sample_mels]
+        max_cross_mel_len = max(cross_sample_mel_lens)
+
+        padded_cross_mels = []
+        for cross_mel, cross_len in zip(cross_sample_mels, cross_sample_mel_lens):
+            if cross_mel is not None:
+                padded_cross_mel = F.pad(cross_mel, (0, 0, 0, max_cross_mel_len - cross_len), value=MEL_PADDING_VALUE)
+                padded_cross_mels.append(padded_cross_mel)
+            else:
+                padded_cross_mels.append(torch.full((max_cross_mel_len, 80), MEL_PADDING_VALUE))
+
         result['cross_sample_mel'] = torch.stack(padded_cross_mels)
         result['cross_sample_mel_len'] = torch.tensor(cross_sample_mel_lens)
 
@@ -528,7 +532,7 @@ def collate_fn(batch):
 def create_dataloader(
     data_dir: str,
     batch_size: int = 2,
-    num_workers: int = 2,
+    num_workers: int = 0,  # Windows 下建议设为 0
     max_duration: float = 15.0,
 ) -> DataLoader:
     """Create DataLoader for training"""

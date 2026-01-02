@@ -838,11 +838,58 @@ class InterpolateRegulator(nn.Module):
 
 
 # =============================================================================
-# Conditional Decoder (U-Net style)
+# Prompt Isolation Mask - 防止 Attention 泄漏
+# =============================================================================
+
+def create_prompt_isolation_mask(
+    seq_len: int,
+    prompt_len: int,
+    device: torch.device,
+    dtype: torch.dtype = torch.float32,
+) -> torch.Tensor:
+    """
+    创建 Prompt Isolation Mask，阻止 target 看到 prompt
+
+    遮罩设计:
+    - prompt 区域 (query) 看 prompt 区域 (key) → 允许 (0)
+    - prompt 区域 (query) 看 target 区域 (key) → 阻止 (-inf)
+    - target 区域 (query) 看 prompt 区域 (key) → 阻止 (-inf)  ← 关键!
+    - target 区域 (query) 看 target 区域 (key) → 允许 (0)
+
+    Args:
+        seq_len: 总序列长度 (prompt_len + target_len)
+        prompt_len: prompt 区域的长度
+        device: 设备
+        dtype: 数据类型
+
+    Returns:
+        attention_bias: (1, 1, seq_len, seq_len) 的遮罩
+    """
+    mask = torch.zeros(1, 1, seq_len, seq_len, device=device, dtype=dtype)
+
+    if prompt_len <= 0 or prompt_len >= seq_len:
+        return mask
+
+    # 阻止 target 看到 prompt (关键!)
+    mask[:, :, prompt_len:, :prompt_len] = float('-inf')
+
+    # 阻止 prompt 看到 target
+    mask[:, :, :prompt_len, prompt_len:] = float('-inf')
+
+    return mask
+
+
+# =============================================================================
+# Conditional Decoder (U-Net style) with Prompt Isolation
 # =============================================================================
 
 class ConditionalDecoder(nn.Module):
-    """Conditional decoder for flow matching"""
+    """
+    Conditional decoder for flow matching with Prompt Isolation support.
+
+    【重要】集成了 Prompt Isolation Mask，在 Attention 计算时阻止 target 看到 prompt，
+    从而减少语义泄漏。
+    """
     def __init__(
         self,
         in_channels,
@@ -859,6 +906,10 @@ class ConditionalDecoder(nn.Module):
         channels = tuple(channels)
         self.in_channels = in_channels
         self.out_channels = out_channels
+
+        # Prompt Isolation 配置
+        self.prompt_isolation_enabled = True
+        self.prompt_isolation_len = 0  # 在 forward 之前设置
 
         self.time_embeddings = SinusoidalPosEmb(in_channels)
         time_embed_dim = channels[0] * 4
@@ -945,6 +996,12 @@ class ConditionalDecoder(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     def forward(self, x, mask, mu, t, spks=None, cond=None):
+        """
+        Forward pass with Prompt Isolation.
+
+        如果 self.prompt_isolation_len > 0，会在 Attention 计算时添加隔离遮罩，
+        阻止 target 位置看到 prompt 位置的信息。
+        """
         t = self.time_embeddings(t).to(t.dtype)
         t = self.time_mlp(t)
 
@@ -959,14 +1016,30 @@ class ConditionalDecoder(nn.Module):
         hiddens = []
         masks = [mask]
 
+        # 获取 prompt isolation 配置
+        isolation_enabled = getattr(self, 'prompt_isolation_enabled', False)
+        prompt_len = getattr(self, 'prompt_isolation_len', 0)
+
         for resnet, transformer_blocks, downsample in self.down_blocks:
             mask_down = masks[-1]
             x = resnet(x, mask_down, t)
             x = rearrange(x, "b c t -> b t c").contiguous()
 
+            seq_len = x.size(1)
             attn_mask = mask_down.bool()
-            attn_mask = attn_mask.expand(-1, x.size(1), -1)
+            attn_mask = attn_mask.expand(-1, seq_len, -1)
             attn_mask = mask_to_bias(attn_mask, x.dtype)
+
+            # 添加 Prompt Isolation Mask
+            if isolation_enabled and prompt_len > 0:
+                # 根据 downsampling 缩放 prompt_len
+                scale = seq_len / mask.shape[-1]
+                scaled_prompt_len = max(1, int(prompt_len * scale))
+                if scaled_prompt_len < seq_len:
+                    isolation_mask = create_prompt_isolation_mask(
+                        seq_len, scaled_prompt_len, x.device, x.dtype
+                    )
+                    attn_mask = attn_mask + isolation_mask.squeeze(1)
 
             for transformer_block in transformer_blocks:
                 x = transformer_block(hidden_states=x, attention_mask=attn_mask, timestep=t)
@@ -982,9 +1055,20 @@ class ConditionalDecoder(nn.Module):
             x = resnet(x, mask_mid, t)
             x = rearrange(x, "b c t -> b t c").contiguous()
 
+            seq_len = x.size(1)
             attn_mask = mask_mid.bool()
-            attn_mask = attn_mask.expand(-1, x.size(1), -1)
+            attn_mask = attn_mask.expand(-1, seq_len, -1)
             attn_mask = mask_to_bias(attn_mask, x.dtype)
+
+            # 添加 Prompt Isolation Mask
+            if isolation_enabled and prompt_len > 0:
+                scale = seq_len / mask.shape[-1]
+                scaled_prompt_len = max(1, int(prompt_len * scale))
+                if scaled_prompt_len < seq_len:
+                    isolation_mask = create_prompt_isolation_mask(
+                        seq_len, scaled_prompt_len, x.device, x.dtype
+                    )
+                    attn_mask = attn_mask + isolation_mask.squeeze(1)
 
             for transformer_block in transformer_blocks:
                 x = transformer_block(hidden_states=x, attention_mask=attn_mask, timestep=t)
@@ -997,9 +1081,20 @@ class ConditionalDecoder(nn.Module):
             x = resnet(x, mask_up, t)
             x = rearrange(x, "b c t -> b t c").contiguous()
 
+            seq_len = x.size(1)
             attn_mask = mask_up.bool()
-            attn_mask = attn_mask.expand(-1, x.size(1), -1)
+            attn_mask = attn_mask.expand(-1, seq_len, -1)
             attn_mask = mask_to_bias(attn_mask, x.dtype)
+
+            # 添加 Prompt Isolation Mask
+            if isolation_enabled and prompt_len > 0:
+                scale = seq_len / mask.shape[-1]
+                scaled_prompt_len = max(1, int(prompt_len * scale))
+                if scaled_prompt_len < seq_len:
+                    isolation_mask = create_prompt_isolation_mask(
+                        seq_len, scaled_prompt_len, x.device, x.dtype
+                    )
+                    attn_mask = attn_mask + isolation_mask.squeeze(1)
 
             for transformer_block in transformer_blocks:
                 x = transformer_block(hidden_states=x, attention_mask=attn_mask, timestep=t)

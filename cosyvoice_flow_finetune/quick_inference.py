@@ -278,7 +278,16 @@ def denormalize_mel(mel: torch.Tensor) -> torch.Tensor:
 
 def patch_flow_for_finetuned(flow_model, verbose=True):
     """
-    Patch flow 模型的 inference 方法，添加归一化/反归一化处理
+    Patch CosyVoice 的 flow 模型，添加归一化/反归一化处理
+
+    【重要说明】
+    quick_inference.py 使用的是 CosyVoice 原版的模型结构（不是我们的 flow_model.py），
+    只是替换了权重。因此需要外部 patch 来处理归一化。
+
+    训练时：feat 被归一化到 N(0,1)，模型学习在这个分布下生成
+    推理时：CosyVoice 原始代码不做归一化，所以需要：
+    1. 对 prompt_feat 进行归一化（输入）
+    2. 对输出进行反归一化（输出）
     """
     original_inference = flow_model.inference
 
@@ -290,7 +299,7 @@ def patch_flow_for_finetuned(flow_model, verbose=True):
             print(f"    [Patch] prompt_feat 原始: mean={prompt_feat.mean():.2f}, "
                   f"range=[{prompt_feat.min():.2f}, {prompt_feat.max():.2f}]")
 
-        # 对 prompt_feat 进行归一化
+        # 对 prompt_feat 进行归一化（与训练时一致）
         prompt_feat_normalized = normalize_mel(prompt_feat)
 
         if verbose:
@@ -303,13 +312,15 @@ def patch_flow_for_finetuned(flow_model, verbose=True):
         )
 
         if verbose:
-            print(f"    [Patch] flow 输出: mean={result.mean():.2f}")
+            print(f"    [Patch] flow 输出（归一化空间）: mean={result.mean():.2f}, "
+                  f"range=[{result.min():.2f}, {result.max():.2f}]")
 
-        # 对输出进行反归一化
+        # 对输出进行反归一化，还原到原始 mel 尺度
         result_denormalized = denormalize_mel(result)
 
         if verbose:
-            print(f"    [Patch] 反归一化后: mean={result_denormalized.mean():.2f}")
+            print(f"    [Patch] 反归一化后: mean={result_denormalized.mean():.2f}, "
+                  f"range=[{result_denormalized.min():.2f}, {result_denormalized.max():.2f}]")
 
         return result_denormalized, cache
 
@@ -595,7 +606,10 @@ def quick_inference(
 
                 output_audio = audio.cpu()
 
-                # 使用 trim_ratio 裁剪开头，去除 prompt 残留
+                # 注意：flow.inference() 和 model.py 的 token2wav() 已经处理了 prompt 切除
+                # 这里不需要再次切除，否则会丢失有效内容
+
+                # 旧的 trim_ratio 逻辑（保留兼容，但默认禁用）
                 trim_ratio = INFERENCE_CONFIG.get('trim_ratio', 0.0)
                 if trim_ratio > 0:
                     trim_samples = int(output_audio.shape[-1] * trim_ratio)

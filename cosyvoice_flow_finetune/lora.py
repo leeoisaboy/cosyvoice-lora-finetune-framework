@@ -66,9 +66,12 @@ class LoRALinear(nn.Module):
         result = self.original_layer(x)
 
         # LoRA 增量: (BA)x * scaling
+        # 确保 LoRA 权重与输入的 dtype 一致
         lora_output = self.lora_dropout(x)
-        lora_output = F.linear(lora_output, self.lora_A)  # x @ A^T
-        lora_output = F.linear(lora_output, self.lora_B)  # (x @ A^T) @ B^T
+        lora_A = self.lora_A.to(x.dtype)
+        lora_B = self.lora_B.to(x.dtype)
+        lora_output = F.linear(lora_output, lora_A)  # x @ A^T
+        lora_output = F.linear(lora_output, lora_B)  # (x @ A^T) @ B^T
 
         return result + lora_output * self.scaling
 
@@ -120,9 +123,10 @@ class LoRAConv1d(nn.Module):
         result = self.original_layer(x)
 
         # LoRA 增量
+        # 使用 functional 接口并显式转换权重 dtype，兼容混合精度训练
         lora_output = self.lora_dropout(x)
-        lora_output = self.lora_A(lora_output)
-        lora_output = self.lora_B(lora_output)
+        lora_output = F.conv1d(lora_output, self.lora_A.weight.to(x.dtype))
+        lora_output = F.conv1d(lora_output, self.lora_B.weight.to(x.dtype))
 
         return result + lora_output * self.scaling
 

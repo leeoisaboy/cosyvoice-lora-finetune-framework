@@ -36,6 +36,13 @@ from config import (
     PRETRAINED_MODEL_DIR, DATA_DIR, OUTPUT_DIR,
     TRAIN_CONFIG, LORA_CONFIG
 )
+
+# 尝试导入无 prompt 训练配置
+try:
+    from config import NO_PROMPT_TRAINING_CONFIG
+except ImportError:
+    NO_PROMPT_TRAINING_CONFIG = {'enabled': False}
+
 from flow_model import build_flow_model
 from dataset import FlowFinetuneDataset, collate_fn
 
@@ -340,6 +347,18 @@ def main():
     print("=" * 60)
     print("CosyVoice Flow LoRA 微调训练")
     print("=" * 60)
+
+    # 显示训练模式
+    if NO_PROMPT_TRAINING_CONFIG.get('enabled', False):
+        print(f"\n[训练模式] 无 Prompt 训练模式")
+        print(f"  - 模式: {NO_PROMPT_TRAINING_CONFIG.get('mode', 'full')}")
+        if NO_PROMPT_TRAINING_CONFIG.get('mode') == 'mixed':
+            print(f"  - 无 prompt 比例: {NO_PROMPT_TRAINING_CONFIG.get('no_prompt_ratio', 0.8) * 100:.0f}%")
+        print(f"  - 推理时无需参考音频，完全依赖 LoRA 学到的音色")
+    else:
+        print(f"\n[训练模式] 标准模式（带 Prompt）")
+        print(f"  - 使用语义泄漏防护策略")
+        print(f"  - 推理时需要提供参考音频")
 
     # 显示终止条件
     print(f"\n终止条件:")
