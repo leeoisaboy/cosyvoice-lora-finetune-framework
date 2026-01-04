@@ -33,9 +33,11 @@
 <table>
 <tr>
 <td width="60%">
+ <a href="https://www.bilibili.com/video/BV1Sti7B9ENN/">
+     <!-- 这里建议放入你上传到仓库里的封面图路径 -->
+   <img width="2560" height="1600" alt="视频封面" src="https://github.com/user-attachments/assets/cd3cfc7c-01e0-4b99-8b5c-2fe1feecf657" />
 
-
-
+  </a>
 </td>
 <td width="40%">
 
