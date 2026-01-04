@@ -65,7 +65,7 @@ TRAIN_CONFIG = {
     'learning_rate': 1e-4,         # 降低学习率防止过拟合
     'min_learning_rate': 1e-6,
     'weight_decay': 0.01,          # 提高权重衰减
-    'warmup_steps': 200,           # 增加预热步数
+    'warmup_steps': 50,            # 减少预热步数（从 200 降低到 50），加快学习
 
     # 显存优化
     # 【重要】max_feat_len 决定训练时的最大序列长度
@@ -167,6 +167,60 @@ NO_PROMPT_TRAINING_CONFIG = {
     # 是否使用固定的 speaker embedding（从训练数据计算均值）
     # 如果为 False，使用每个样本自己的 embedding
     'use_mean_embedding': False,
+}
+
+
+# ============================================================
+# LLM + Flow 联合训练配置
+# ============================================================
+# 联合训练可以同时学习音色和吟诵风格，实现真正的无 prompt 推理
+# 注意：联合训练需要更多显存，8GB 显存需要极限优化
+
+JOINT_TRAINING_CONFIG = {
+    # 训练模式
+    # 'joint': 同时训练 LLM 和 Flow（推荐，效果最好）
+    # 'llm_only': 只训练 LLM（学习韵律和节奏）
+    # 'flow_only': 只训练 Flow（学习音色，等价于原来的 train.py）
+    'training_mode': 'joint',
+
+    # Loss 权重 - 强化 LLM 韵律学习
+    'llm_loss_weight': 2.0,         # 提高 LLM loss 权重，强化韵律学习（从 1.0 提高到 2.0）
+    'flow_loss_weight': 1.0,
+
+    # 无 prompt 训练（推荐开启，实现真正的无 prompt 推理）
+    'no_prompt_training': True,
+
+    # LLM LoRA 配置 - 防过拟合版
+    # 注意：LLM loss 过低（<1.5）会导致过拟合，出现"自说自话"
+    'llm_lora': {
+        'lora_r': 8,            # 降低 r 值，减少过拟合风险（从 16 降回 8）
+        'lora_alpha': 16,       # 同步降低 alpha
+        'lora_dropout': 0.15,   # 提高 dropout，增强正则化（从 0.05 提高到 0.15）
+        'target_modules': [
+            'linear_q', 'linear_k', 'linear_v',
+            'linear_out',
+            'w_1', 'w_2',
+        ],
+    },
+
+    # Flow LoRA 配置
+    'flow_lora': {
+        'lora_r': 16,           # 提高 r 值（从 8 提高到 16）
+        'lora_alpha': 32,       # 同步提高 alpha（从 16 提高到 32）
+        'lora_dropout': 0.05,
+        'target_modules': [
+            'to_q', 'to_k', 'to_v',
+            'linear_q', 'linear_k', 'linear_v',
+            'w_1', 'w_2',
+        ],
+    },
+
+    # 训练参数
+    'learning_rate': 2e-4,          # 降低学习率，减缓 LLM 过拟合（从 5e-4 降到 2e-4）
+    'max_epochs': 100,
+    'batch_size': 1,
+    'accumulate_grad_batches': 16,
+    'max_feat_len': 250,
 }
 
 

@@ -442,11 +442,28 @@ class FlowFinetuneDataset(Dataset):
             if self.cross_sample_enabled and random.random() < self.cross_sample_prob:
                 cross_sample_mel = self._get_random_prompt_mel(idx)
 
+            # ========== 获取 text_token（如果存在）==========
+            text_token = None
+            if 'text_token' in sample and sample['text_token'] is not None:
+                text_token_data = sample['text_token']
+                if isinstance(text_token_data, torch.Tensor):
+                    text_token = text_token_data.long()
+                elif isinstance(text_token_data, np.ndarray):
+                    text_token = torch.from_numpy(text_token_data.copy()).long()
+                elif isinstance(text_token_data, list):
+                    text_token = torch.tensor(text_token_data, dtype=torch.long)
+                else:
+                    text_token = torch.tensor(np.array(text_token_data), dtype=torch.long)
+
+                if text_token.dim() > 1:
+                    text_token = text_token.flatten()
+
             return {
                 'speech_token': speech_token,
                 'speech_feat': speech_feat,
                 'embedding': embedding,
                 'cross_sample_mel': cross_sample_mel,  # 跨样本 prompt mel，可能为 None
+                'text_token': text_token,  # 文本 token，可能为 None（兼容旧数据集）
             }
 
         except Exception as e:
@@ -465,11 +482,41 @@ class FlowFinetuneDataset(Dataset):
             return None
 
 
-def collate_fn(batch):
-    """Collate function for DataLoader with cross-sample prompting support"""
+def collate_fn(batch, max_feat_len_limit: Optional[int] = None):
+    """Collate function for DataLoader with cross-sample prompting and text_token support
+
+    Args:
+        batch: list of samples
+        max_feat_len_limit: 最大序列长度限制（帧数），超过会截断。
+                           如果为 None，从 config 读取或不限制。
+    """
     batch = [b for b in batch if b is not None]
     if len(batch) == 0:
         return None
+
+    # 从 config 获取 max_feat_len 限制
+    if max_feat_len_limit is None:
+        try:
+            from config import JOINT_TRAINING_CONFIG
+            max_feat_len_limit = JOINT_TRAINING_CONFIG.get('max_feat_len', 150)
+        except ImportError:
+            max_feat_len_limit = 150  # 默认限制 150 帧约 1.7 秒
+
+    # 截断过长的样本
+    for b in batch:
+        feat_len = b['speech_feat'].shape[0]
+        if feat_len > max_feat_len_limit:
+            # 截断 speech_feat
+            b['speech_feat'] = b['speech_feat'][:max_feat_len_limit]
+            # 同步截断 speech_token（按比例）
+            token_len = b['speech_token'].shape[0]
+            new_token_len = int(token_len * max_feat_len_limit / feat_len)
+            b['speech_token'] = b['speech_token'][:new_token_len]
+            # 同步截断 text_token（如果有）
+            if b.get('text_token') is not None:
+                text_len = b['text_token'].shape[0]
+                new_text_len = int(text_len * max_feat_len_limit / feat_len)
+                b['text_token'] = b['text_token'][:new_text_len]
 
     max_token_len = max(b['speech_token'].shape[0] for b in batch)
     max_feat_len = max(b['speech_feat'].shape[0] for b in batch)
@@ -506,6 +553,26 @@ def collate_fn(batch):
         'speech_feat_len': torch.tensor(speech_feat_lens),
         'embedding': torch.stack(embeddings),
     }
+
+    # ========== 处理 text_token（用于 LLM 联合训练）==========
+    text_tokens = [b.get('text_token', None) for b in batch]
+    valid_text_tokens = [t for t in text_tokens if t is not None]
+
+    if valid_text_tokens and len(valid_text_tokens) == len(batch):
+        # 所有样本都有 text_token
+        max_text_len = max(t.shape[0] for t in valid_text_tokens)
+        padded_text_tokens = []
+        text_token_lens = []
+
+        for text_token in text_tokens:
+            if text_token is not None:
+                text_len = text_token.shape[0]
+                padded_text = F.pad(text_token, (0, max_text_len - text_len), value=0)
+                padded_text_tokens.append(padded_text)
+                text_token_lens.append(text_len)
+
+        result['text_token'] = torch.stack(padded_text_tokens)
+        result['text_token_len'] = torch.tensor(text_token_lens)
 
     # 只有当有跨样本 mel 时才处理（减少内存开销）
     cross_sample_mels = [b.get('cross_sample_mel', None) for b in batch]
