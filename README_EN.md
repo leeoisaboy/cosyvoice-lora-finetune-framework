@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="removed_background_1767114134910.png" alt="CosyVoice Flow LoRA Finetune Logo" width="200"/>
+ <img width="500" height="273" alt="removed_background_1767114134910" src="https://github.com/user-attachments/assets/d826778f-f64a-4360-84a2-44f42af622ac" />
 </p>
 
 <h1 align="center">CosyVoice Flow LoRA Finetune</h1>
@@ -21,7 +21,7 @@
 ## Project Overview
 
 <p align="center">
-  <img src="big_pic.png" alt="Project Overview" width="100%"/>
+  <img width="2752" height="1536" alt="big_pic" src="https://github.com/user-attachments/assets/cd6d5193-509c-41c5-81bb-1414d4e0f7f3" />
 </p>
 
 > This diagram illustrates the complete technical evolution from Zero-Shot fine-tuning to LLM + Flow joint training.
@@ -33,9 +33,10 @@
 <table>
 <tr>
 <td width="60%">
-
-https://github.com/user-attachments/assets/YOUR_VIDEO_ID
-
+  <a href="https://www.bilibili.com/video/BV1Sti7B9ENN/">
+     <!-- 这里建议放入你上传到仓库里的封面图路径 -->
+     <img width="2560" height="1600" alt="视频封面" src="https://github.com/user-attachments/assets/cd3cfc7c-01e0-4b99-8b5c-2fe1feecf657" />
+  </a>
 </td>
 <td width="40%">
 
@@ -68,8 +69,8 @@ Upload Instructions:
 
 | Audio | Description |
 |-------|-------------|
-| [床前明月光.wav](床前明月光.wav) | "Moonlight before my bed, I suspect it's frost on the ground. I raise my head to gaze at the moon, then lower it, thinking of home." |
-| [两个黄鹂鸣翠柳.wav](两个黄鹂鸣翠柳.wav) | "Two orioles sing in the green willows, a line of egrets flies into the blue sky. My window frames the thousand-year snows of the Western Mountains, my door harbors boats bound for distant Wu." |
+|[床前明月光.wav](https://github.com/user-attachments/files/24422120/default.wav)| "Moonlight before my bed, I suspect it's frost on the ground. I raise my head to gaze at the moon, then lower it, thinking of home." |
+|[两个黄鹂鸣翠柳.wav](https://github.com/user-attachments/files/24422125/default.wav)| "Two orioles sing in the green willows, a line of egrets flies into the blue sky. My window frames the thousand-year snows of the Western Mountains, my door harbors boats bound for distant Wu." |
 
 ---
 
@@ -621,85 +622,87 @@ If still OOM, train in stages: first `--mode flow_only`, then `--mode llm_only`.
 > CosyVoice Flow Fine-tuning Debugging Walkthrough — A Systematic Troubleshooting Framework from Loss 30+ to Perfect Convergence
 
 <p align="center">
-  <img src="docs/guide_images/page_01.png" alt="Cover" width="100%"/>
+ <img width="2867" height="1600" alt="page_01" src="https://github.com/user-attachments/assets/9104917a-de9a-46e9-8533-8c684ed293b1" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_02.png" alt="Debugging Level Map" width="100%"/>
+  <img width="2867" height="1600" alt="page_02" src="https://github.com/user-attachments/assets/95daa830-c90d-4db8-a0d7-2cf04d5e0015" />
+
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_03.png" alt="Level 0: Data is the Foundation" width="100%"/>
+  <img width="2867" height="1600" alt="page_03" src="https://github.com/user-attachments/assets/577b8de9-c475-4362-891a-eb7079d52c4a" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_04.png" alt="Level 1: Conquering the Loss 20-30 Wall of Despair" width="100%"/>
+  <img width="2867" height="1600" alt="page_04" src="https://github.com/user-attachments/assets/3d9e53d1-9956-4bc8-bf0c-40a78e03188b" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_05.png" alt="Key to Level 1: Activation Functions Must Align" width="100%"/>
+  <img width="2867" height="1600" alt="page_05" src="https://github.com/user-attachments/assets/1d165abe-80a9-4f96-80fb-8a1e148d2bd2" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_06.png" alt="Level 1 Checklist: Devil in Structural Alignment Details" width="100%"/>
+  <img width="2867" height="1600" alt="page_06" src="https://github.com/user-attachments/assets/68606d4a-a982-4fa0-858d-5576f709d82e" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_07.png" alt="Level 2: Crossing the Loss 8-12 Convergence Plateau" width="100%"/>
+  <img width="2867" height="1600" alt="page_07" src="https://github.com/user-attachments/assets/efecf79f-e966-485c-ae1f-10c6f701245b" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_08.png" alt="Plateau Breakthrough: The Forgotten scale=1000" width="100%"/>
+  <img width="2867" height="1600" alt="page_08" src="https://github.com/user-attachments/assets/8eeb1681-c320-4584-8a6c-f53db71a955a" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_09.png" alt="Level 3: Conquering the Final Loss Barrier" width="100%"/>
+  <img width="2867" height="1600" alt="page_09" src="https://github.com/user-attachments/assets/e0a4542d-d796-4d26-8d25-8e2605bc3e89" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_10.png" alt="Hidden Level: Beware the Ghostly Semantic Leakage" width="100%"/>
+  <img width="2867" height="1600" alt="page_10" src="https://github.com/user-attachments/assets/6b57be9d-3874-41dd-af60-9a7a1a84d995" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_11.png" alt="Cutting Off Leakage: Two Core Training Strategies" width="100%"/>
+  <img width="2867" height="1600" alt="page_11" src="https://github.com/user-attachments/assets/55470279-e09f-4186-86f7-9f3e5f09ad2e" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_12.png" alt="Ultimate Technique: Single-Batch Overfitting for Quick Problem Location" width="100%"/>
+  <img width="2867" height="1600" alt="page_12" src="https://github.com/user-attachments/assets/e69d86de-ae98-470b-b147-887bf4974794" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_13.png" alt="CosyVoice Flow Fine-tuning Complete Overview" width="100%"/>
+  <img width="2867" height="1600" alt="page_13" src="https://github.com/user-attachments/assets/713ac6a9-3528-4964-8ed6-9ab5cad2e555" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_14.png" alt="Epilogue" width="100%"/>
+  <img width="2867" height="1600" alt="page_14" src="https://github.com/user-attachments/assets/dcc1b116-3407-47bd-9457-d1d010d0bb53" />
+
 </p>
 
 ---
@@ -707,15 +710,7 @@ If still OOM, train in stages: first `--mode flow_only`, then `--mode llm_only`.
 ## Project Structure
 
 ```
-cosyvoice_flow_finetune/
-├── README.md                        # This file (Chinese)
-├── README_EN.md                     # This file (English)
-├── big_pic.png                      # Project overview diagram
-├── CosyVoice案例：调试下一代AI语音.mp4  # Debugging documentary video
-├── NotebookLM Mind Map.png          # Knowledge graph
-├── docs/guide_images/               # Visual guide images
-│
-└── cosyvoice_flow_finetune/         # Core code
+ cosyvoice_flow_finetune/         # Core code
     ├── config.py                    # Configuration file
     ├── train_joint.py               # Joint training script
     ├── inference_joint.py           # Prompt-free inference
