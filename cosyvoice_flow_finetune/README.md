@@ -40,10 +40,13 @@ cosyvoice_flow_finetune/
 ├── dataset.py             # 数据集加载
 ├── lora.py                # LoRA 实现
 ├── utils.py               # 工具函数
+├── modules.py             # 需要用到的模块
+├── flow_model.py          # flow_model模块
 ├── cosyvoice/             # CosyVoice 核心代码（已集成）
 ├── matcha/                # Matcha-TTS 核心代码（已集成）
 ├── data/                  # 训练数据目录（自动生成）
 └── output/                # 输出目录（模型权重）
+
 ```
 
 ## Quick Start
