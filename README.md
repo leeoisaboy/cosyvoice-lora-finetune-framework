@@ -704,17 +704,22 @@ python inference_joint.py --text "床前明月光，疑是地上霜"
 ## 项目结构
 
 ```
- cosyvoice_flow_finetune/         # 核心代码
-    ├── config.py                    # 配置文件
-    ├── train_joint.py               # 联合训练脚本
-    ├── inference_joint.py           # 无 Prompt 推理
-    ├── prepare_joint_data.py        # 数据准备
-    ├── llm_flow_model.py            # 联合模型定义
-    ├── merge_joint_weights.py       # 权重合并
-    ├── lora.py                      # LoRA 模块
-    ├── dataset.py                   # 数据集
-    ├── utils.py                     # 工具函数
-    └── cosyvoice/                   # CosyVoice 核心代码
+cosyvoice_flow_finetune/
+├── config.py              # 统一配置文件
+├── train_joint.py         # 联合训练脚本
+├── inference_joint.py     # 无 Prompt 推理脚本
+├── prepare_joint_data.py  # 数据准备脚本
+├── llm_flow_model.py      # 联合模型定义
+├── merge_joint_weights.py # 权重合并工具
+├── dataset.py             # 数据集加载
+├── lora.py                # LoRA 实现
+├── utils.py               # 工具函数
+├── modules.py             # 需要用到的模块
+├── flow_model.py          # flow_model模块
+├── cosyvoice/             # CosyVoice 核心代码（已集成）
+├── matcha/                # Matcha-TTS 核心代码（已集成）
+├── data/                  # 训练数据目录（自动生成）
+└── output/                # 输出目录（模型权重）
 ```
 
 ---
