@@ -720,6 +720,11 @@ If still OOM, train in stages: first `--mode flow_only`, then `--mode llm_only`.
     ├── lora.py                      # LoRA module
     ├── dataset.py                   # Dataset
     ├── utils.py                     # Utility functions
+    ├── flow_model.py                # flow_model
+    ├── modules.py                   # modules
+    ├── matcha/                      # Matcha-TTS core code
+    ├── data/                        # train data dir
+    ├── output/                      # output dir
     └── cosyvoice/                   # CosyVoice core code
 ```
 
