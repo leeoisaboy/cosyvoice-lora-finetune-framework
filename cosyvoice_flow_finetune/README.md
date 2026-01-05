@@ -90,10 +90,10 @@ pretrained_models/CosyVoice-300M/
 
 ### 3. 准备训练数据
 
-在上一级目录创建 `data_preparation/short_raw_data/` 目录，放入音频和对应文本：
+在上一级目录创建 `raw_data/` 目录，放入音频和对应文本：
 
 ```
-data_preparation/short_raw_data/
+raw_data/
 ├── 001.wav
 ├── 001.txt      # 包含 001.wav 的文本内容
 ├── 002.wav
