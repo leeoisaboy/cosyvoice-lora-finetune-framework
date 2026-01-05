@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="removed_background_1767114134910.png" alt="CosyVoice Flow LoRA Finetune Logo" width="200"/>
+  <img width="500" height="273" alt="removed_background_1767114134910" src="https://github.com/user-attachments/assets/d826778f-f64a-4360-84a2-44f42af622ac" />
 </p>
 
 <h1 align="center">CosyVoice Flow LoRA Finetune</h1>
@@ -21,7 +21,7 @@
 ## 项目全景
 
 <p align="center">
-  <img src="big_pic.png" alt="Project Overview" width="100%"/>
+  <img width="2752" height="1536" alt="big_pic" src="https://github.com/user-attachments/assets/cd6d5193-509c-41c5-81bb-1414d4e0f7f3" />
 </p>
 
 > 这张图展示了从 Zero-Shot 微调到 LLM + Flow 联合训练的完整技术演进路线。
@@ -33,9 +33,10 @@
 <table>
 <tr>
 <td width="60%">
-
-https://github.com/user-attachments/assets/YOUR_VIDEO_ID
-
+ <a href="https://www.bilibili.com/video/BV1Sti7B9ENN/">
+     <!-- 这里建议放入你上传到仓库里的封面图路径 -->
+   <img width="2560" height="1600" alt="视频封面" src="https://github.com/user-attachments/assets/cd3cfc7c-01e0-4b99-8b5c-2fe1feecf657" />
+  </a>
 </td>
 <td width="40%">
 
@@ -68,8 +69,8 @@ https://github.com/user-attachments/assets/YOUR_VIDEO_ID
 
 | 音频 | 说明 |
 |------|------|
-| [床前明月光.wav](床前明月光.wav) | 床前明月光，疑似地上霜。举头望明月，低头思故乡。 |
-| [两个黄鹂鸣翠柳.wav](两个黄鹂鸣翠柳.wav) | 两个黄鹂鸣翠柳，一行白鹭上青天。窗含西岭千秋雪，门泊东吴万里船。 |
+|[床前明月光.wav](https://github.com/user-attachments/files/24422120/default.wav) | 床前明月光，疑似地上霜。举头望明月，低头思故乡。 |
+|[两个黄鹂鸣翠柳.wav](https://github.com/user-attachments/files/24422125/default.wav)| 两个黄鹂鸣翠柳，一行白鹭上青天。窗含西岭千秋雪，门泊东吴万里船。 |
 
 ---
 
@@ -615,85 +616,87 @@ python inference_joint.py --text "床前明月光，疑是地上霜"
 > CosyVoice Flow 微调调试通关指南 —— 从 Loss 30+ 到完美收敛的系统化排错框架
 
 <p align="center">
-  <img src="docs/guide_images/page_01.png" alt="封面" width="100%"/>
+ <img width="2867" height="1600" alt="page_01" src="https://github.com/user-attachments/assets/9104917a-de9a-46e9-8533-8c684ed293b1" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_02.png" alt="调试关卡地图" width="100%"/>
+  <img width="2867" height="1600" alt="page_02" src="https://github.com/user-attachments/assets/95daa830-c90d-4db8-a0d7-2cf04d5e0015" />
+
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_03.png" alt="第零关：数据是模型的基石" width="100%"/>
+  <img width="2867" height="1600" alt="page_03" src="https://github.com/user-attachments/assets/577b8de9-c475-4362-891a-eb7079d52c4a" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_04.png" alt="第一关：攻克 Loss 20-30 的绝望之墙" width="100%"/>
+  <img width="2867" height="1600" alt="page_04" src="https://github.com/user-attachments/assets/3d9e53d1-9956-4bc8-bf0c-40a78e03188b" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_05.png" alt="解锁第一关的钥匙：激活函数必须对齐" width="100%"/>
+  <img width="2867" height="1600" alt="page_05" src="https://github.com/user-attachments/assets/1d165abe-80a9-4f96-80fb-8a1e148d2bd2" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_06.png" alt="第一关通关清单：结构对齐的魔鬼细节" width="100%"/>
+  <img width="2867" height="1600" alt="page_06" src="https://github.com/user-attachments/assets/68606d4a-a982-4fa0-858d-5576f709d82e" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_07.png" alt="第二关：跨越 Loss 8-12 的收敛高原" width="100%"/>
+  <img width="2867" height="1600" alt="page_07" src="https://github.com/user-attachments/assets/efecf79f-e966-485c-ae1f-10c6f701245b" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_08.png" alt="高原突破口：被遗忘的 scale=1000" width="100%"/>
+  <img width="2867" height="1600" alt="page_08" src="https://github.com/user-attachments/assets/8eeb1681-c320-4584-8a6c-f53db71a955a" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_09.png" alt="第三关：攻克最后的 Loss 壁垒" width="100%"/>
+  <img width="2867" height="1600" alt="page_09" src="https://github.com/user-attachments/assets/e0a4542d-d796-4d26-8d25-8e2605bc3e89" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_10.png" alt="隐藏关卡：警惕幽灵般的语义泄漏" width="100%"/>
+  <img width="2867" height="1600" alt="page_10" src="https://github.com/user-attachments/assets/6b57be9d-3874-41dd-af60-9a7a1a84d995" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_11.png" alt="斩断泄漏：两种核心训练策略" width="100%"/>
+  <img width="2867" height="1600" alt="page_11" src="https://github.com/user-attachments/assets/55470279-e09f-4186-86f7-9f3e5f09ad2e" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_12.png" alt="终极心法：用单批次过拟合快速定位问题" width="100%"/>
+  <img width="2867" height="1600" alt="page_12" src="https://github.com/user-attachments/assets/e69d86de-ae98-470b-b147-887bf4974794" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_13.png" alt="CosyVoice Flow 微调通关总览" width="100%"/>
+  <img width="2867" height="1600" alt="page_13" src="https://github.com/user-attachments/assets/713ac6a9-3528-4964-8ed6-9ab5cad2e555" />
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/guide_images/page_14.png" alt="结语" width="100%"/>
+  <img width="2867" height="1600" alt="page_14" src="https://github.com/user-attachments/assets/dcc1b116-3407-47bd-9457-d1d010d0bb53" />
+
 </p>
 
 ---
@@ -701,14 +704,7 @@ python inference_joint.py --text "床前明月光，疑是地上霜"
 ## 项目结构
 
 ```
-cosyvoice_flow_finetune/
-├── README.md                        # 本文件
-├── big_pic.png                      # 项目全景图
-├── CosyVoice案例：调试下一代AI语音.mp4  # 调试纪实视频
-├── NotebookLM Mind Map.png          # 知识图谱
-├── docs/guide_images/               # 易懂指南图片
-│
-└── cosyvoice_flow_finetune/         # 核心代码
+ cosyvoice_flow_finetune/         # 核心代码
     ├── config.py                    # 配置文件
     ├── train_joint.py               # 联合训练脚本
     ├── inference_joint.py           # 无 Prompt 推理
